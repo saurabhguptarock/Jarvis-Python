@@ -1,0 +1,21 @@
+{
+  "name": "jarvis",
+  "module": "jarvis.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "ffmpeg-static": "^5.2.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "lame": "^1.2.4",
+    "mic": "^2.1.2",
+    "node-lame": "^1.3.2",
+    "node-record-lpcm16": "^1.0.1",
+    "openai": "^4.85.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
