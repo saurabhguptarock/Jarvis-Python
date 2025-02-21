@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import fs from "node:fs";
+import fsPromise from "node:fs/promises";
 import { spawn } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
@@ -69,6 +70,19 @@ function startRecording() {
 
 startRecording();
 
+let conversation = fs.existsSync("./conversation.json")
+  ? JSON.parse(await fsPromise.readFile("./conversation.json", "utf8"))
+  : [
+      {
+        role: "system",
+        content: `You are J.A.R.V.I.S., Tony Stark’s AI assistant. From now on, always output your responses in English, even if the input is in Hindi. Incorporate common expressions that reflect an Indian dialect in your tone, ensuring the language is clear, direct, and professional.
+
+Your responses should be short, direct, and focused solely on answering the query. Do not elaborate on concepts or provide additional explanations unless explicitly requested by the user. Format your answers in a way that is optimal for text-to-speech conversion, ensuring clarity and a natural conversational flow.
+
+Let's begin.`,
+      },
+    ];
+
 async function afterRecording() {
   console.log("Executing post-recording action...");
 
@@ -78,34 +92,36 @@ async function afterRecording() {
 
   const transcriptions = await openai.audio.transcriptions.create({
     file: fs.createReadStream(outputMp3File),
-    prompt:
-      "You are Whisper-1, an advanced speech recognition system. Please transcribe the following audio input, which is entirely in Hindi. Ensure that your transcription accurately captures all nuances, idioms, and context inherent to the Hindi language. Provide only the transcription text with no additional commentary. Begin transcription now.",
     model: "whisper-1",
-    language: "hi",
+    prompt:
+      "Please process the provided audio file. The audio is in Hindi, but instead of transcribing it directly in Hindi, translate the content and output the transcription in English.",
+    language: "en",
     response_format: "text",
   });
 
   console.log(transcriptions);
+  conversation.push({ role: "user", content: transcriptions });
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
-    store: true,
+    store: false,
     n: 1,
-    messages: [
-      {
-        role: "system",
-        content: `You are now J.A.R.V.I.S., Tony Stark’s AI assistant. Adopt a polite, refined, and slightly witty tone. Provide only short, direct, and concise answers without extra elaboration. Begin your response with a brief pause (indicated by a short silence or ellipsis) to allow for smooth text-to-speech conversion. Stick strictly to the facts and respond in a succinct and efficient manner, while maintaining the characteristic style of J.A.R.V.I.S. Let's begin.`,
-      },
-      { role: "user", content: transcriptions },
-    ],
+    messages: conversation,
   });
 
-  console.log(completion.choices[0].message.content);
+  const assistantMessage = completion.choices[0].message.content;
+
+  // Append the assistant's message to the conversation history.
+  conversation.push({ role: "assistant", content: assistantMessage });
+
+  storeDataToFile(conversation);
+
+  console.log(assistantMessage);
 
   const response = await openai.audio.speech.create({
-    input: completion.choices[0].message.content,
+    input: assistantMessage,
     model: "tts-1",
-    voice: "alloy",
+    voice: "onyx",
   });
 
   // @ts-expect-error
@@ -122,6 +138,14 @@ async function afterRecording() {
   ffplay.on("error", (err) => {
     console.error("Error starting ffplay:", err);
   });
+}
+
+async function storeDataToFile(data) {
+  await fsPromise.writeFile(
+    "./conversation.json",
+    JSON.stringify(data, null, 2),
+    "utf-8"
+  );
 }
 
 async function stopRecording(command) {
