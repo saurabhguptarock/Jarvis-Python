@@ -31,10 +31,9 @@ function startRecording() {
       "-loglevel debug", // Detailed logging needed for silence detection
     ])
     .on("start", (cmd) => {
-      console.log("FFmpeg command:", cmd);
+      console.log("🗣️ Start speaking!");
     })
     .on("stderr", (line) => {
-      // Capture logs internally without printing them
       capturedLogs.push(line);
 
       if (line.includes("silence_start")) {
