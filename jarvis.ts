@@ -1,16 +1,28 @@
 import OpenAI from "openai";
 import fs from "node:fs";
 import fsPromise from "node:fs/promises";
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
 import { Readable } from "node:stream";
+
+const output = execSync(
+  'cmd /c "ffmpeg -list_devices true -f dshow -i dummy 2>&1"',
+  {
+    encoding: "utf8",
+    stdio: "pipe",
+  }
+);
+
+const regex = /"([^"]+)" \(audio\)/;
+const match = output.match(regex);
 
 const outputMp3File = "recording.mp3";
 let silenceTimer = null;
 let capturedLogs = [];
 
-const MICROPHONE_DEVICE = "Headset (realme Buds T300 Hands-Free AG Audio)";
+const MICROPHONE_DEVICE =
+  match[1] ?? "Headset (realme Buds T300 Hands-Free AG Audio)";
 
 function startRecording() {
   console.log("🎙️ Recording started... Will auto-stop on 1s silence.");
