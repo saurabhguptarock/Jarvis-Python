@@ -6,31 +6,19 @@ import ffmpeg from "fluent-ffmpeg";
 import ffmpegStatic from "ffmpeg-static";
 import { Readable } from "node:stream";
 
-const output = execSync(
-  'cmd /c "ffmpeg -list_devices true -f dshow -i dummy 2>&1"',
-  {
-    encoding: "utf8",
-    stdio: "pipe",
-  }
-);
-
-const regex = /"([^"]+)" \(audio\)/;
-const match = output.match(regex);
-
 const outputMp3File = "recording.mp3";
 let silenceTimer = null;
 let capturedLogs = [];
 
-const MICROPHONE_DEVICE =
-  match[1] ?? "Headset (realme Buds T300 Hands-Free AG Audio)";
+const { inputDevice, inputFormat } = await getAudioDevice();
 
 function startRecording() {
   console.log("🎙️ Recording started... Will auto-stop on 1s silence.");
 
   const command = ffmpeg()
     .setFfmpegPath(ffmpegStatic)
-    .input(`audio=${MICROPHONE_DEVICE}`)
-    .inputFormat("dshow")
+    .input(inputDevice)
+    .inputFormat(inputFormat)
     // Use the silence detection filter
     .audioFilters("silencedetect=n=-45dB:d=1")
     // Record directly to MP3 using libmp3lame.
@@ -150,6 +138,43 @@ async function afterRecording() {
   ffplay.on("error", (err) => {
     console.error("Error starting ffplay:", err);
   });
+}
+
+async function getAudioDevice() {
+  let inputFormat;
+  let inputDevice;
+
+  if (process.platform === "win32") {
+    const output = execSync(
+      'cmd /c "ffmpeg -list_devices true -f dshow -i dummy 2>&1"',
+      {
+        encoding: "utf8",
+        stdio: "pipe",
+      }
+    );
+
+    const regex = /"([^"]+)" \(audio\)/;
+    const match = output.match(regex);
+
+    inputFormat = "dshow";
+    inputDevice = `audio=${match[1]}`;
+  } else if (process.platform === "darwin") {
+    inputFormat = "avfoundation";
+    // On macOS, the default audio input is typically at index 0.
+    // Adjust the device index or string based on your requirements.
+    inputDevice = ":0";
+  } else if (process.platform === "linux") {
+    inputFormat = "alsa";
+    // Replace "default" with your ALSA device name if needed.
+    inputDevice = "default";
+  } else {
+    throw new Error("Unsupported OS");
+  }
+
+  return {
+    inputFormat,
+    inputDevice,
+  };
 }
 
 async function storeDataToFile(data) {
