@@ -3,7 +3,8 @@
   "module": "jarvis.ts",
   "type": "module",
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/fluent-ffmpeg": "^2.1.27"
   },
   "dependencies": {
     "ffmpeg-static": "^5.2.0",
