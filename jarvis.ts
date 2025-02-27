@@ -7,67 +7,6 @@ import ffmpegStatic from "ffmpeg-static";
 import { Readable } from "node:stream";
 
 const outputMp3File = "recording.mp3";
-let silenceTimer = null;
-let capturedLogs = [];
-
-const { inputDevice, inputFormat } = await getAudioDevice();
-
-function startRecording() {
-  console.log("🎙️ Recording started... Will auto-stop on 1s silence.");
-
-  const command = ffmpeg()
-    .setFfmpegPath(ffmpegStatic)
-    .input(inputDevice)
-    .inputFormat(inputFormat)
-    // Use the silence detection filter
-    .audioFilters("silencedetect=n=-45dB:d=1")
-    // Record directly to MP3 using libmp3lame.
-    .audioCodec("libmp3lame")
-    .format("mp3")
-    .outputOptions([
-      "-ac 1", // Mono audio
-      "-ar 44100", // 44.1kHz sample rate
-      "-y", // Overwrite output file if it exists
-      "-loglevel debug", // Detailed logging needed for silence detection
-    ])
-    .on("start", (cmd) => {
-      console.log("🗣️ Start speaking!");
-    })
-    .on("stderr", (line) => {
-      capturedLogs.push(line);
-
-      if (line.includes("silence_start")) {
-        console.log("🔕 Silence detected! Scheduling stop in 1 second...");
-        if (!silenceTimer) {
-          silenceTimer = setTimeout(() => {
-            stopRecording(command);
-          }, 1000);
-        }
-      } else if (line.includes("silence_end")) {
-        console.log("🔊 Sound resumed. Cancelling scheduled stop if any.");
-        if (silenceTimer) {
-          clearTimeout(silenceTimer);
-          silenceTimer = null;
-        }
-      }
-    })
-    .on("error", (err, stdout, stderr) => {
-      console.error("❌ FFmpeg error:", err.message);
-      process.exit(1);
-    })
-    .on("end", () => {
-      console.log(`✅ Recording finished. File saved as: ${outputMp3File}`);
-      afterRecording();
-    })
-    .save(outputMp3File);
-
-  process.on("SIGINT", () => {
-    console.log("Received SIGINT. Stopping recording...");
-    stopRecording(command);
-  });
-}
-
-startRecording();
 
 let conversation = fs.existsSync("./conversation.json")
   ? JSON.parse(await fsPromise.readFile("./conversation.json", "utf8"))
@@ -81,6 +20,65 @@ Your responses should be short, direct, and focused solely on answering the quer
 Let's begin.`,
       },
     ];
+
+function recordCycle() {
+  let silenceTimer = null;
+  let capturedLogs = [];
+
+  console.log("🎙️ Recording started... Will auto-stop on 1s silence.");
+  getAudioDevice().then(({ inputDevice, inputFormat }) => {
+    const command = ffmpeg()
+      .setFfmpegPath(ffmpegStatic)
+      .input(inputDevice)
+      .inputFormat(inputFormat)
+      // Use the silence detection filter
+      .audioFilters("silencedetect=n=-45dB:d=1")
+      // Record directly to MP3 using libmp3lame.
+      .audioCodec("libmp3lame")
+      .format("mp3")
+      .outputOptions([
+        "-ac 1", // Mono audio
+        "-ar 44100", // 44.1kHz sample rate
+        "-y", // Overwrite output file if it exists
+        "-loglevel debug", // Detailed logging needed for silence detection
+      ])
+      .on("start", (cmd) => {
+        console.log("🗣️ Start speaking!");
+      })
+      .on("stderr", (line) => {
+        capturedLogs.push(line);
+
+        if (line.includes("silence_start")) {
+          console.log("🔕 Silence detected! Scheduling stop in 1 second...");
+          if (!silenceTimer) {
+            silenceTimer = setTimeout(() => {
+              stopRecording(command);
+            }, 1000);
+          }
+        } else if (line.includes("silence_end")) {
+          console.log("🔊 Sound resumed. Cancelling scheduled stop if any.");
+          if (silenceTimer) {
+            clearTimeout(silenceTimer);
+            silenceTimer = null;
+          }
+        }
+      })
+      .on("error", (err, stdout, stderr) => {
+        console.error("❌ FFmpeg error:", err.message);
+        process.exit(1);
+      })
+      .on("end", () => {
+        console.log(`✅ Recording finished. File saved as: ${outputMp3File}`);
+        afterRecording();
+      })
+      .save(outputMp3File);
+
+    process.on("SIGINT", () => {
+      console.log("Received SIGINT. Stopping recording...");
+      stopRecording(command);
+    });
+  });
+}
 
 async function afterRecording() {
   console.log("Executing post-recording action...");
@@ -132,10 +130,12 @@ async function afterRecording() {
 
   ffplay.on("close", (code) => {
     console.log("Playback finished with code", code);
+    recordCycle();
   });
 
   ffplay.on("error", (err) => {
     console.error("Error starting ffplay:", err);
+    recordCycle();
   });
 }
 
@@ -196,3 +196,5 @@ async function stopRecording(command) {
     console.error("Error while stopping recording:", e);
   }
 }
+
+recordCycle();
